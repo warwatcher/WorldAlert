@@ -77,6 +77,7 @@ export default function Alerts() {
             <SelectItem value="disaster">Disaster</SelectItem>
             <SelectItem value="humanitarian">Humanitarian</SelectItem>
             <SelectItem value="health">Health</SelectItem>
+            <SelectItem value="political">Political</SelectItem>
             <SelectItem value="other">Other</SelectItem>
           </SelectContent>
         </Select>
