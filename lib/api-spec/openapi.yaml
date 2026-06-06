@@ -1,15 +1,16 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: WorldAlert API - Global alert aggregation
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: alerts
+    description: Global alert operations
 paths:
   /healthz:
     get:
@@ -24,6 +25,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [alerts]
+      summary: List all global alerts
+      description: Returns a list of global alerts, optionally filtered
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+
+  /alerts/stats:
+    get:
+      operationId: getAlertStats
+      tags: [alerts]
+      summary: Get alert statistics
+      description: Returns summary counts and breakdowns
+      responses:
+        "200":
+          description: Alert statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertStats"
+
+  /alerts/{id}:
+    get:
+      operationId: getAlert
+      tags: [alerts]
+      summary: Get a single alert by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Alert details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "404":
+          description: Not found
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +103,72 @@ components:
       required:
         - status
 
+    Alert:
+      type: object
+      required:
+        - id
+        - title
+        - category
+        - severity
+        - lat
+        - lng
+        - country
+        - source
+        - sourceUrl
+        - publishedAt
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: string
+          enum: [earthquake, disaster, humanitarian, weather, conflict, health, other]
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        lat:
+          type: number
+        lng:
+          type: number
+        country:
+          type: ["string", "null"]
+        region:
+          type: ["string", "null"]
+        source:
+          type: string
+        sourceUrl:
+          type: string
+        publishedAt:
+          type: string
+        updatedAt:
+          type: ["string", "null"]
+        magnitude:
+          type: ["number", "null"]
+        affectedPopulation:
+          type: ["integer", "null"]
+
+    AlertStats:
+      type: object
+      required:
+        - total
+        - bySeverity
+        - byCategory
+        - lastUpdated
+      properties:
+        total:
+          type: integer
+        critical:
+          type: integer
+        bySeverity:
+          type: object
+          additionalProperties:
+            type: integer
+        byCategory:
+          type: object
+          additionalProperties:
+            type: integer
+        lastUpdated:
+          type: string
