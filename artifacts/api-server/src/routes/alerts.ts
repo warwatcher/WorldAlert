@@ -25,6 +25,50 @@ interface Alert {
 let cache: { data: Alert[]; timestamp: number } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+// ── Text utilities ────────────────────────────────────────────────────────────
+
+function cleanText(str: string): string {
+  if (!str) return str;
+  return str
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#\d+;/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function cleanEONETTitle(title: string): string {
+  return title
+    .replace(/\bRX\b/g, "Prescribed Burn")
+    .replace(/\bWUI\b/g, "Wildland-Urban Interface")
+    .replace(/\bRx\b/g, "Prescribed")
+    .replace(/\s+\(\d+\)\s*/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function titleCase(str: string): string {
+  return str.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function simpleHash(str: string): string {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) ^ str.charCodeAt(i);
+    h = h >>> 0;
+  }
+  return h.toString(36);
+}
+
+// ── Severity helpers ──────────────────────────────────────────────────────────
+
 function magnitudeToSeverity(mag: number): Alert["severity"] {
   if (mag >= 7.0) return "critical";
   if (mag >= 6.0) return "high";
@@ -32,7 +76,8 @@ function magnitudeToSeverity(mag: number): Alert["severity"] {
   return "low";
 }
 
-// Country name → approx center lat/lng (for geocoding news headlines)
+// ── Country geocoding ─────────────────────────────────────────────────────────
+
 const COUNTRY_COORDS: Record<string, [number, number]> = {
   ukraine: [49.0, 32.0],
   russia: [61.5, 105.3],
@@ -40,6 +85,7 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   palestine: [31.9, 35.2],
   "gaza strip": [31.35, 34.35],
   gaza: [31.35, 34.35],
+  "west bank": [31.9, 35.2],
   syria: [34.8, 38.9],
   iran: [32.4, 53.7],
   iraq: [33.2, 43.7],
@@ -56,6 +102,7 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   nigeria: [9.1, 8.7],
   drc: [-4.0, 21.8],
   "democratic republic of the congo": [-4.0, 21.8],
+  "dr congo": [-4.0, 21.8],
   congo: [-4.0, 21.8],
   afghanistan: [33.9, 67.7],
   pakistan: [30.4, 69.3],
@@ -80,6 +127,8 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   mozambique: [-18.7, 35.5],
   zimbabwe: [-19.0, 29.2],
   "south africa": [-30.6, 22.9],
+  cameroon: [3.9, 11.5],
+  "central african republic": [6.6, 20.9],
   colombia: [4.1, -72.3],
   venezuela: [6.4, -66.6],
   brazil: [-14.2, -51.9],
@@ -90,6 +139,7 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   "united states": [37.1, -95.7],
   uk: [55.4, -3.4],
   "united kingdom": [55.4, -3.4],
+  britain: [55.4, -3.4],
   france: [46.2, 2.2],
   germany: [51.2, 10.5],
   poland: [51.9, 19.1],
@@ -104,10 +154,6 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   "sri lanka": [7.9, 80.7],
   bangladesh: [23.7, 90.4],
   nepal: [28.4, 84.1],
-  "burkina": [12.4, -1.6],
-  cameroon: [3.9, 11.5],
-  "central african republic": [6.6, 20.9],
-  "the sahel": [14.0, 2.0],
   sahel: [14.0, 2.0],
   "west africa": [12.0, -2.0],
   "middle east": [29.0, 42.0],
@@ -115,50 +161,57 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   "latin america": [0.0, -60.0],
   africa: [0.0, 20.0],
   "east africa": [1.0, 35.0],
+  "horn of africa": [8.0, 45.0],
+  "the balkans": [43.0, 19.0],
+  "haiti": [18.9, -72.3],
+  nicaragua: [12.6, -85.2],
+  "el salvador": [13.7, -88.9],
+  guatemala: [15.8, -90.2],
+  honduras: [15.2, -86.2],
+  peru: [-9.2, -75.0],
+  chile: [-35.7, -71.5],
+  eritrea: [15.2, 39.8],
+  burundi: [-3.4, 29.9],
+  "central asia": [41.0, 63.0],
+  serbia: [44.0, 21.0],
 };
-
-function simpleHash(str: string): string {
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) + h) ^ str.charCodeAt(i);
-    h = h >>> 0;
-  }
-  return h.toString(36);
-}
 
 function geocodeText(text: string): [number, number] | null {
   const lower = text.toLowerCase();
-  for (const [country, coords] of Object.entries(COUNTRY_COORDS)) {
+  // Longer keys first to avoid partial matches (e.g. "south sudan" before "sudan")
+  const sorted = Object.entries(COUNTRY_COORDS).sort((a, b) => b[0].length - a[0].length);
+  for (const [country, coords] of sorted) {
     if (lower.includes(country)) return coords;
   }
   return null;
 }
 
+// ── Category / severity detection ─────────────────────────────────────────────
+
 function detectConflictCategory(text: string): Alert["category"] {
   const t = text.toLowerCase();
-  if (/war|battle|troops|military|attack|missile|bomb|air strike|soldiers|ceasefire|shelling|invasion|offensive|gun|shoot|kill|killed|casualties|dead|death|hostage|terror|terrorist|explosion|blast|drone|combat|forces|army|naval|siege|ambush/i.test(t))
+  if (/\b(war|battle|troops|military|air.?strike|bomb|missile|soldiers|ceasefire|shelling|invasion|offensive|gunfire|casualties|dead|death|hostage|terror(ist)?|explosion|blast|drone.?strike|combat|forces|army|naval|siege|ambush|armed|shooting|killed|massacre)\b/.test(t))
     return "conflict";
-  if (/election|coup|protest|sanction|parliament|government|political|president|minister|diplomacy|treaty|border|refugee|displaced|uprising|revolution|riot/i.test(t))
+  if (/\b(election|coup|sanction|parliament|diplomatic|president|prime minister|minister|diplomacy|treaty|border dispute|uprising|revolution|riot|protest|demonstrat|crackdown|opposition|martial law|ceasefire|peace talk)\b/.test(t))
     return "political";
-  if (/humanitarian|famine|starvation|food crisis|malnutrition|displaced|refugee|aid|relief/i.test(t))
+  if (/\b(humanitarian|famine|starvation|food crisis|malnutrition|refugee|displaced|aid worker|relief|evacuation)\b/.test(t))
     return "humanitarian";
-  if (/earthquake|quake|tremor|seismic/i.test(t)) return "earthquake";
-  if (/flood|cyclone|hurricane|typhoon|storm|wildfire|drought|volcano|tsunami|tornado/i.test(t)) return "disaster";
-  if (/disease|outbreak|epidemic|virus|cholera|ebola|malaria|health|hospital/i.test(t)) return "health";
+  if (/\b(earthquake|quake|tremor|seismic)\b/.test(t)) return "earthquake";
+  if (/\b(flood|cyclone|hurricane|typhoon|storm|wildfire|drought|volcano|tsunami|tornado)\b/.test(t)) return "disaster";
+  if (/\b(disease|outbreak|epidemic|pandemic|virus|cholera|ebola|malaria|health crisis|hospital)\b/.test(t)) return "health";
   return "other";
 }
 
 function detectSeverity(text: string, category: Alert["category"]): Alert["severity"] {
   const t = text.toLowerCase();
-  if (/dead|killed|casualties|massacre|genocide|war|invasion|nuclear|mass|crisis|emergency|catastrophe|hundreds|thousands|dozens/i.test(t)) {
-    if (category === "conflict" || category === "political") return "high";
-    return "high";
-  }
-  if (/coup|attack|bomb|explosion|missile|strike|offensive|shelling/i.test(t)) return "critical";
+  if (/\b(coup|invasion|nuclear|genocid|ethnic cleansing|mass killing|chemical weapon)\b/.test(t)) return "critical";
+  if (/\b(dead|killed|casualties|massacre|war|hundreds|thousands|dozens|offensive|shelling|missile.?strike|explosion|bomb|blast)\b/.test(t)) return "high";
   if (category === "conflict") return "high";
   if (category === "political") return "medium";
   return "medium";
 }
+
+// ── Data fetchers ─────────────────────────────────────────────────────────────
 
 async function fetchUSGSEarthquakes(): Promise<Alert[]> {
   try {
@@ -169,26 +222,20 @@ async function fetchUSGSEarthquakes(): Promise<Alert[]> {
     const json = (await res.json()) as {
       features: {
         id: string;
-        properties: {
-          title: string;
-          mag: number;
-          place: string;
-          time: number;
-          updated: number;
-          url: string;
-        };
+        properties: { title: string; mag: number; place: string; time: number; updated: number; url: string };
         geometry: { coordinates: [number, number, number] };
       }[];
     };
     return json.features.map((f) => {
       const mag = f.properties.mag ?? 0;
       const place = f.properties.place ?? "Unknown location";
+      const sev = magnitudeToSeverity(mag);
       return {
         id: `usgs-${f.id}`,
-        title: f.properties.title || `M${mag} earthquake near ${place}`,
-        description: `Magnitude ${mag} earthquake at ${place}. Depth: ${Math.round(f.geometry.coordinates[2])} km.`,
+        title: `M${mag.toFixed(1)} Earthquake — ${place}`,
+        description: `Magnitude ${mag.toFixed(1)} earthquake ${place}. Depth: ${Math.round(f.geometry.coordinates[2])} km below surface.`,
         category: "earthquake",
-        severity: magnitudeToSeverity(mag),
+        severity: sev,
         lat: f.geometry.coordinates[1],
         lng: f.geometry.coordinates[0],
         country: null,
@@ -235,17 +282,26 @@ async function fetchNASAEONETEvents(): Promise<Alert[]> {
       snow: "medium", temperatureExtremes: "medium", volcanoes: "critical",
       waterColor: "low", wildfires: "high",
     };
+    const humanCategoryName: Record<string, string> = {
+      drought: "Drought", dustHaze: "Dust / Haze", earthquakes: "Earthquake",
+      floods: "Flood", landslides: "Landslide", manmade: "Manmade Event",
+      seaLakeIce: "Sea / Lake Ice", severeStorms: "Severe Storm", snow: "Snow / Blizzard",
+      temperatureExtremes: "Extreme Temperature", volcanoes: "Volcanic Activity",
+      waterColor: "Water Discoloration", wildfires: "Wildfire",
+    };
 
     const alerts: Alert[] = [];
     for (const event of json.events) {
       const geo = event.geometry?.[event.geometry.length - 1];
       if (!geo?.coordinates) continue;
       const catId = event.categories?.[0]?.id ?? "other";
+      const catLabel = humanCategoryName[catId] ?? "Event";
       const source = event.sources?.[0];
+      const rawTitle = cleanEONETTitle(event.title);
       alerts.push({
         id: `eonet-${event.id}`,
-        title: event.title,
-        description: null,
+        title: `${catLabel}: ${rawTitle}`,
+        description: `Active ${catLabel.toLowerCase()} event tracked by NASA EONET.`,
         category: categoryMap[catId] ?? "other",
         severity: severityMap[catId] ?? "medium",
         lat: geo.coordinates[1],
@@ -307,10 +363,11 @@ async function fetchReliefWebDisasters(): Promise<Alert[]> {
       else if (typeName.includes("epidemic") || typeName.includes("disease") || typeName.includes("health")) category = "health";
       else if (typeName.includes("conflict") || typeName.includes("civil") || typeName.includes("violence")) category = "conflict";
       const severity: Alert["severity"] = f.status === "alert" ? "high" : "medium";
+      const cleanDesc = f.description ? cleanText(f.description).slice(0, 400) : null;
       alerts.push({
         id: `rw-${item.id}`,
-        title: f.name,
-        description: f.description?.slice(0, 400) || null,
+        title: cleanText(f.name),
+        description: cleanDesc,
         category,
         severity,
         lat: loc.lat,
@@ -334,7 +391,6 @@ async function fetchReliefWebDisasters(): Promise<Alert[]> {
 
 async function fetchUCDPConflicts(): Promise<Alert[]> {
   try {
-    // UCDP GED (Uppsala Conflict Data Program) - armed conflict events
     const url = "https://ucdpapi.pcr.uu.se/api/gedevents/24.1?pagesize=200&year=2023";
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
@@ -344,7 +400,6 @@ async function fetchUCDPConflicts(): Promise<Alert[]> {
     const json = (await res.json()) as {
       Result: {
         id: number;
-        year: number;
         type_of_violence: number;
         side_a: string;
         side_b: string;
@@ -358,14 +413,22 @@ async function fetchUCDPConflicts(): Promise<Alert[]> {
         country: string;
         region: string;
         source_article: string;
-        source_original: string;
       }[];
     };
 
-    const violenceTypeMap: Record<number, string> = {
-      1: "State-based conflict",
-      2: "Non-state conflict",
-      3: "One-sided violence",
+    function shortenSide(name: string): string {
+      return name
+        .replace(/Government of /gi, "")
+        .replace(/\(.*?\)/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim()
+        .slice(0, 30);
+    }
+
+    const typeLabel: Record<number, string> = {
+      1: "State Conflict",
+      2: "Non-State Conflict",
+      3: "One-Sided Violence",
     };
 
     return (json.Result ?? [])
@@ -373,14 +436,17 @@ async function fetchUCDPConflicts(): Promise<Alert[]> {
       .sort((a, b) => b.best - a.best)
       .slice(0, 120)
       .map((e) => {
-        const vtype = violenceTypeMap[e.type_of_violence] || "Armed conflict";
-        const title = `${vtype}: ${e.side_a} vs ${e.side_b}${e.where_description ? ` — ${e.where_description}` : ""}`;
+        const aName = shortenSide(e.side_a);
+        const bName = shortenSide(e.side_b);
+        const loc = e.where_description || e.where_coordinates || e.country;
+        const type = typeLabel[e.type_of_violence] || "Armed Conflict";
         const deaths = e.best;
+        const title = `${type} in ${e.country}: ${aName} vs ${bName}${loc && loc !== e.country ? ` (${loc})` : ""}`;
         const severity: Alert["severity"] = deaths >= 100 ? "critical" : deaths >= 25 ? "high" : deaths >= 5 ? "medium" : "low";
         return {
           id: `ucdp-${e.id}`,
           title,
-          description: `${deaths} estimated deaths. Location: ${e.where_description || e.where_coordinates}, ${e.country}. Period: ${e.date_start}${e.date_end !== e.date_start ? ` – ${e.date_end}` : ""}.`,
+          description: `Estimated ${deaths.toLocaleString()} deaths. ${e.country}${loc && loc !== e.country ? `, ${loc}` : ""}. Active: ${e.date_start}${e.date_end !== e.date_start ? ` – ${e.date_end}` : ""}. Parties: ${e.side_a} vs ${e.side_b}.`,
           category: "conflict" as const,
           severity,
           lat: e.latitude,
@@ -404,22 +470,30 @@ async function fetchUCDPConflicts(): Promise<Alert[]> {
 async function fetchRSSNews(feedUrl: string, sourceName: string): Promise<Alert[]> {
   try {
     const res = await fetch(feedUrl, {
-      headers: { "User-Agent": "WorldAlert/1.0 (global monitoring)", Accept: "application/rss+xml, application/xml, text/xml" },
+      headers: { "User-Agent": "WorldAlert/1.0", Accept: "application/rss+xml, application/xml, text/xml" },
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) throw new Error(`RSS fetch ${res.status}`);
+    if (!res.ok) throw new Error(`RSS ${res.status}`);
     const xml = await res.text();
 
-    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", cdataPropName: "__cdata" });
     const parsed = parser.parse(xml);
     const items: any[] = parsed?.rss?.channel?.item ?? parsed?.feed?.entry ?? [];
 
     const alerts: Alert[] = [];
     for (const item of items.slice(0, 60)) {
-      const title: string = item.title?.["#text"] ?? item.title ?? "";
-      const desc: string = item.description?.["#text"] ?? item.description ?? item.summary?.["#text"] ?? item.summary ?? "";
-      const link: string = item.link?.["@_href"] ?? item.link ?? item.guid?.["#text"] ?? item.guid ?? "";
+      const rawTitle: string =
+        item.title?.["#text"] ?? item.title?.__cdata ?? item.title ?? "";
+      const rawDesc: string =
+        item.description?.["#text"] ?? item.description?.__cdata ?? item.description ??
+        item.summary?.["#text"] ?? item.summary?.__cdata ?? item.summary ?? "";
+      const link: string =
+        item.link?.["@_href"] ?? item.link ?? item.guid?.["#text"] ?? item.guid ?? "";
       const pubDate: string = item.pubDate ?? item.published ?? item.updated ?? "";
+
+      const title = cleanText(rawTitle);
+      const desc = cleanText(rawDesc);
+
       if (!title || !link) continue;
 
       const fullText = `${title} ${desc}`;
@@ -427,20 +501,24 @@ async function fetchRSSNews(feedUrl: string, sourceName: string): Promise<Alert[
       if (!coords) continue;
 
       const category = detectConflictCategory(fullText);
-      if (category === "other") continue; // skip non-interesting items
+      if (category === "other") continue;
 
       const severity = detectSeverity(fullText, category);
-      const country = Object.entries(COUNTRY_COORDS).find(([, c]) => c[0] === coords[0] && c[1] === coords[1])?.[0] ?? null;
+
+      const matchedCountry = Object.entries(COUNTRY_COORDS)
+        .sort((a, b) => b[0].length - a[0].length)
+        .find(([, c]) => c[0] === coords[0] && c[1] === coords[1])?.[0] ?? null;
+      const countryDisplay = matchedCountry ? titleCase(matchedCountry) : null;
 
       alerts.push({
         id: `rss-${sourceName.toLowerCase().replace(/\s+/g, "-")}-${simpleHash(title + link)}`,
-        title: title.length > 120 ? title.slice(0, 120) + "…" : title,
-        description: desc ? (desc.replace(/<[^>]+>/g, "").slice(0, 300) || null) : null,
+        title: title.length > 120 ? title.slice(0, 117) + "…" : title,
+        description: desc ? desc.slice(0, 350) : null,
         category,
         severity,
         lat: coords[0],
         lng: coords[1],
-        country: country ? country.charAt(0).toUpperCase() + country.slice(1) : null,
+        country: countryDisplay,
         region: null,
         source: sourceName,
         sourceUrl: typeof link === "string" ? link : String(link),
@@ -471,8 +549,7 @@ async function fetchAllRSSNews(): Promise<Alert[]> {
   for (const r of results) {
     if (r.status === "fulfilled") {
       for (const item of r.value) {
-        // Deduplicate by approximate title similarity
-        const key = item.title.slice(0, 40).toLowerCase();
+        const key = item.title.slice(0, 50).toLowerCase().replace(/[^a-z0-9]/g, "");
         if (!seen.has(key)) {
           seen.add(key);
           allItems.push(item);
@@ -482,6 +559,8 @@ async function fetchAllRSSNews(): Promise<Alert[]> {
   }
   return allItems;
 }
+
+// ── Aggregation ───────────────────────────────────────────────────────────────
 
 async function getAllAlerts(): Promise<Alert[]> {
   const now = Date.now();
@@ -511,13 +590,13 @@ async function getAllAlerts(): Promise<Alert[]> {
   return alerts;
 }
 
+// ── Routes ────────────────────────────────────────────────────────────────────
+
 router.get("/alerts", async (req, res) => {
   try {
     let alerts = await getAllAlerts();
     const { category, severity, limit } = req.query as {
-      category?: string;
-      severity?: string;
-      limit?: string;
+      category?: string; severity?: string; limit?: string;
     };
     if (category) alerts = alerts.filter((a) => a.category === category);
     if (severity) alerts = alerts.filter((a) => a.severity === severity);
