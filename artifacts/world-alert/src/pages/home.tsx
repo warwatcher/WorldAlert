@@ -6,17 +6,18 @@ import {
   X, ExternalLink, MapPin, Activity, Clock, Users, SlidersHorizontal,
   Tag, ChevronDown, ChevronUp, Swords, CloudLightning, Heart, Globe2,
   Flame, AlertTriangle, Landmark, Eye, EyeOff, Play, Pause,
-  RotateCcw, Calendar,
+  RotateCcw, Calendar, Layers,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import {
   MapContainer, TileLayer, CircleMarker, Tooltip as LeafletTooltip,
-  Marker, useMapEvents,
+  Marker, useMapEvents, useMap,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "leaflet.heat";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -178,10 +179,14 @@ function FilterPanel({
   filters,
   onChange,
   counts,
+  showHeatmap,
+  onHeatmapToggle,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
   counts: Record<string, number>;
+  showHeatmap: boolean;
+  onHeatmapToggle: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -227,6 +232,21 @@ function FilterPanel({
       >
         {filters.showLabels ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
         <span>Event Labels</span>
+      </button>
+
+      <button
+        onClick={onHeatmapToggle}
+        className={`flex items-center gap-2 px-3 py-2 rounded-lg backdrop-blur-xl border text-xs font-mono transition-colors shadow-lg ${
+          showHeatmap
+            ? "bg-orange-500/20 border-orange-500/40 text-orange-400"
+            : "bg-[#0d1117]/90 border-white/10 text-white hover:bg-white/10"
+        }`}
+      >
+        <Layers className="h-3.5 w-3.5" />
+        <span>Heat Map</span>
+        {showHeatmap && (
+          <span className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse" />
+        )}
       </button>
 
       {open && (
@@ -415,16 +435,59 @@ function TimelineSlider({
   );
 }
 
+// ── Heatmap layer ─────────────────────────────────────────────────────────────
+
+function HeatmapLayer({ alerts }: { alerts: any[] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const points = alerts
+      .filter((a) => !isNaN(a.lat) && !isNaN(a.lng))
+      .map((a) => [
+        a.lat,
+        a.lng,
+        a.severity === "critical" ? 1.0 :
+        a.severity === "high"     ? 0.72 :
+        a.severity === "medium"   ? 0.42 : 0.18,
+      ] as [number, number, number]);
+
+    if (points.length === 0) return;
+
+    const heat = (L as any).heatLayer(points, {
+      radius: 32,
+      blur: 24,
+      maxZoom: 10,
+      max: 1.0,
+      gradient: {
+        0.00: "rgba(0,0,0,0)",
+        0.18: "#1d4ed8",
+        0.38: "#0ea5e9",
+        0.52: "#eab308",
+        0.68: "#f97316",
+        0.84: "#ef4444",
+        1.00: "#ffffff",
+      },
+    });
+
+    heat.addTo(map);
+    return () => { map.removeLayer(heat); };
+  }, [map, alerts]);
+
+  return null;
+}
+
 // ── Map ───────────────────────────────────────────────────────────────────────
 
 function FlatMap({
   alerts,
   onAlertClick,
   showLabels,
+  showHeatmap,
 }: {
   alerts: any[];
   onAlertClick: (a: any) => void;
   showLabels: boolean;
+  showHeatmap: boolean;
 }) {
   return (
     <div className="absolute inset-0">
@@ -441,12 +504,16 @@ function FlatMap({
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
         />
         <CountryLabels />
+        {showHeatmap && <HeatmapLayer alerts={alerts} />}
         {alerts.map((alert) => {
           const isCritical = alert.severity === "critical";
           const isHigh = alert.severity === "high";
+          // In heatmap mode, only render critical + high pins as anchors; others fade out
+          if (showHeatmap && !isCritical && !isHigh) return null;
           const alwaysLabel = isCritical || isHigh;
           const radius = isCritical ? 9 : isHigh ? 7 : alert.severity === "medium" ? 5 : 4;
           const color = SEVERITY_COLORS[alert.severity] || "#3b82f6";
+          const opacity = showHeatmap ? (isCritical ? 1 : 0.7) : (isCritical ? 0.9 : 0.75);
 
           return (
             <CircleMarker
@@ -456,7 +523,7 @@ function FlatMap({
               pathOptions={{
                 color,
                 fillColor: color,
-                fillOpacity: isCritical ? 0.9 : 0.75,
+                fillOpacity: opacity,
                 weight: isCritical ? 2 : 1.5,
               }}
               eventHandlers={{ click: () => onAlertClick(alert) }}
@@ -504,6 +571,9 @@ export default function Home() {
     severities: new Set(ALL_SEVERITIES),
     showLabels: false,
   });
+
+  // Heatmap state
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   // Timeline state
   const [timelineActive, setTimelineActive] = useState(false);
@@ -632,16 +702,22 @@ export default function Home() {
       )}
 
       {webglAvailable ? (
-        <ErrorBoundary fallback={<FlatMap alerts={displayAlerts} onAlertClick={handlePointClick} showLabels={filters.showLabels} />}>
-          <Suspense fallback={<FlatMap alerts={displayAlerts} onAlertClick={handlePointClick} showLabels={filters.showLabels} />}>
+        <ErrorBoundary fallback={<FlatMap alerts={displayAlerts} onAlertClick={handlePointClick} showLabels={filters.showLabels} showHeatmap={showHeatmap} />}>
+          <Suspense fallback={<FlatMap alerts={displayAlerts} onAlertClick={handlePointClick} showLabels={filters.showLabels} showHeatmap={showHeatmap} />}>
             <GlobeView globeData={globeData} onPointClick={handlePointClick} />
           </Suspense>
         </ErrorBoundary>
       ) : (
-        <FlatMap alerts={displayAlerts} onAlertClick={handlePointClick} showLabels={filters.showLabels} />
+        <FlatMap alerts={displayAlerts} onAlertClick={handlePointClick} showLabels={filters.showLabels} showHeatmap={showHeatmap} />
       )}
 
-      <FilterPanel filters={filters} onChange={setFilters} counts={categoryCounts} />
+      <FilterPanel
+        filters={filters}
+        onChange={setFilters}
+        counts={categoryCounts}
+        showHeatmap={showHeatmap}
+        onHeatmapToggle={() => setShowHeatmap((v) => !v)}
+      />
 
       {dateRange && (
         <TimelineSlider
