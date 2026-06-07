@@ -124,5 +124,22 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    background: #000;
   }
+}
+
+@keyframes wa-ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes wa-pulse-ring {
+  0%   { transform: scale(1);    opacity: 0.6; }
+  100% { transform: scale(2.2);  opacity: 0; }
+}
+
+@keyframes wa-scan {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  50%  { opacity: 0.03; }
+  100% { transform: translateY(100%);  opacity: 0; }
 }

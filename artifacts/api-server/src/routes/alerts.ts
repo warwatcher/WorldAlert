@@ -537,11 +537,20 @@ async function fetchRSSNews(feedUrl: string, sourceName: string): Promise<Alert[
 
 async function fetchAllRSSNews(): Promise<Alert[]> {
   const feeds = [
-    { url: "https://feeds.bbci.co.uk/news/world/rss.xml", name: "BBC World" },
-    { url: "https://www.aljazeera.com/xml/rss/all.xml", name: "Al Jazeera" },
-    { url: "https://feeds.reuters.com/reuters/worldNews", name: "Reuters" },
-    { url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", name: "NY Times" },
-    { url: "https://feeds.theguardian.com/theguardian/world/rss", name: "The Guardian" },
+    { url: "https://feeds.bbci.co.uk/news/world/rss.xml",                name: "BBC World" },
+    { url: "https://www.aljazeera.com/xml/rss/all.xml",                   name: "Al Jazeera" },
+    { url: "https://feeds.reuters.com/reuters/worldNews",                  name: "Reuters" },
+    { url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",      name: "NY Times" },
+    { url: "https://feeds.theguardian.com/theguardian/world/rss",         name: "The Guardian" },
+    { url: "https://www.france24.com/en/rss",                              name: "France 24" },
+    { url: "https://rss.dw.com/xml/rss-en-world",                         name: "DW World" },
+    { url: "https://www.voanews.com/api/zk_oqepkve",                      name: "VOA News" },
+    { url: "https://feeds.npr.org/1004/rss.xml",                          name: "NPR World" },
+    { url: "https://www.who.int/rss-feeds/news-releases-en.xml",          name: "WHO" },
+    { url: "https://reliefweb.int/updates/rss.xml",                       name: "ReliefWeb Updates" },
+    { url: "https://www.unhcr.org/rss/news.xml",                          name: "UNHCR" },
+    { url: "https://feeds.feedburner.com/AllJazeeraEnglish",              name: "Al Jazeera Opinion" },
+    { url: "https://foreignpolicy.com/feed/",                             name: "Foreign Policy" },
   ];
   const results = await Promise.allSettled(feeds.map((f) => fetchRSSNews(f.url, f.name)));
   const allItems: Alert[] = [];
@@ -646,4 +655,5 @@ router.get("/alerts/:id", async (req, res) => {
   }
 });
 
+export { getAllAlerts };
 export default router;
