@@ -1,5 +1,4 @@
 import { Link, useLocation } from "wouter";
-import { Globe, Activity, BarChart3, Zap } from "lucide-react";
 import { useListAlerts } from "@workspace/api-client-react";
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -7,9 +6,9 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 const links = [
-  { href: "/",        label: "Globe",  icon: Globe },
-  { href: "/alerts",  label: "Alerts", icon: Activity },
-  { href: "/stats",   label: "Stats",  icon: BarChart3 },
+  { href: "/",        label: "GLOBE"  },
+  { href: "/alerts",  label: "ALERTS" },
+  { href: "/stats",   label: "STATS"  },
 ];
 
 export function Header() {
@@ -24,7 +23,7 @@ export function Header() {
 
   const tickerItems = (alerts ?? [])
     .filter((a) => a.severity === "critical" || a.severity === "high")
-    .slice(0, 24);
+    .slice(0, 30);
 
   return (
     <header
@@ -36,8 +35,8 @@ export function Header() {
         {/* Brand */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
           <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
           </span>
           <span
             className="font-mono font-bold text-sm text-white"
@@ -69,20 +68,19 @@ export function Header() {
 
         {/* Nav */}
         <nav className="ml-auto flex gap-0.5">
-          {links.map(({ href, label, icon: Icon }) => {
+          {links.map(({ href, label }) => {
             const active = location === href;
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-mono tracking-wider transition-colors ${
+                className={`px-3 py-1.5 rounded text-[11px] font-mono tracking-widest transition-colors ${
                   active
                     ? "bg-white/10 text-white"
                     : "text-white/35 hover:text-white/70 hover:bg-white/5"
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{label.toUpperCase()}</span>
+                {label}
               </Link>
             );
           })}
@@ -92,32 +90,32 @@ export function Header() {
       {/* ── Live ticker ─────────────────────────────────────────────────────── */}
       {tickerItems.length > 0 && (
         <div
-          className="relative h-[22px] flex items-center overflow-hidden"
+          className="relative h-[20px] flex items-center overflow-hidden"
           style={{ background: "#000", borderTop: "1px solid rgba(255,255,255,0.04)" }}
         >
           {/* Left badge */}
           <div
-            className="absolute left-0 z-10 h-full flex items-center px-2 gap-1.5 flex-shrink-0"
-            style={{ background: "#000", borderRight: "1px solid rgba(255,255,255,0.06)" }}
+            className="absolute left-0 z-10 h-full flex items-center px-2.5 gap-1.5 flex-shrink-0"
+            style={{ background: "rgba(220,38,38,0.12)", borderRight: "1px solid rgba(220,38,38,0.2)" }}
           >
-            <Zap className="h-2.5 w-2.5 text-yellow-400" />
-            <span className="text-[9px] font-mono text-yellow-400 uppercase tracking-wider hidden sm:inline">
-              Live
+            <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[9px] font-mono text-red-400 uppercase tracking-wider hidden sm:inline">
+              LIVE
             </span>
           </div>
 
           {/* Scrolling content */}
-          <div className="ml-[52px] sm:ml-[72px] overflow-hidden w-full">
+          <div className="ml-[48px] sm:ml-[64px] overflow-hidden w-full">
             <div
-              className="flex items-center gap-0 whitespace-nowrap"
+              className="flex items-center whitespace-nowrap"
               style={{
-                animation: `wa-ticker ${Math.max(25, tickerItems.length * 5)}s linear infinite`,
+                animation: `wa-ticker ${Math.max(12, tickerItems.length * 2)}s linear infinite`,
               }}
             >
               {[...tickerItems, ...tickerItems].map((item, i) => (
                 <span
                   key={`${item.id}-${i}`}
-                  className="inline-flex items-center gap-2 pr-8 flex-shrink-0"
+                  className="inline-flex items-center gap-2 pr-10 flex-shrink-0"
                 >
                   <span
                     className="h-1.5 w-1.5 rounded-full flex-shrink-0"
@@ -130,14 +128,14 @@ export function Header() {
                     [{item.severity}]
                   </span>
                   <span className="text-[9px] font-mono text-white/55">
-                    {item.title.length > 72 ? item.title.slice(0, 72) + "…" : item.title}
+                    {item.title.length > 80 ? item.title.slice(0, 80) + "…" : item.title}
                   </span>
                   {(item.country || item.region) && (
                     <span className="text-[9px] font-mono text-white/20">
                       [{(item.country || item.region)?.toUpperCase()}]
                     </span>
                   )}
-                  <span className="text-white/10 pl-4">◆</span>
+                  <span className="text-white/10 px-3">◆</span>
                 </span>
               ))}
             </div>

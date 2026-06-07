@@ -216,7 +216,34 @@ router.get("/intel/country/:country", async (req, res) => {
     const countryAlerts = allAlerts.filter((a) => {
       const text = [a.country, a.region, a.title, a.description]
         .filter(Boolean).join(" ").toLowerCase();
-      return text.includes(lower) || words.some((w) => text.includes(w));
+      if (text.includes(lower)) return true;
+      if (words.some((w) => text.includes(w))) return true;
+      // Also match common country aliases
+      const aliases: Record<string, string[]> = {
+        "united states": ["u.s.", "usa", "america", "american"],
+        "united kingdom": ["u.k.", "britain", "british", "england", "welsh", "scottish"],
+        "russia": ["russian", "moscow"],
+        "china": ["chinese", "beijing", "ccp"],
+        "israel": ["israeli", "tel aviv"],
+        "palestine": ["palestinian", "gaza", "west bank"],
+        "ukraine": ["ukrainian", "kyiv"],
+        "iran": ["iranian", "tehran"],
+        "iraq": ["iraqi", "baghdad"],
+        "syria": ["syrian", "damascus"],
+        "afghanistan": ["afghan", "kabul", "taliban"],
+        "north korea": ["dprk", "pyongyang"],
+        "south korea": ["korean", "seoul"],
+        "myanmar": ["burma", "burmese"],
+        "democratic republic of congo": ["drc", "congo kinshasa"],
+        "saudi arabia": ["saudi", "riyadh"],
+      };
+      const lowerName = lower;
+      for (const [canonical, aliasList] of Object.entries(aliases)) {
+        if (lowerName === canonical || lowerName.includes(canonical) || canonical.includes(lowerName)) {
+          if (aliasList.some(al => text.includes(al))) return true;
+        }
+      }
+      return false;
     });
 
     let rawRisk = 0;
@@ -251,7 +278,7 @@ router.get("/intel/country/:country", async (req, res) => {
       alertCount: countryAlerts.length,
       byCategory,
       bySeverity,
-      alerts: countryAlerts.slice(0, 30),
+      alerts: countryAlerts.slice(0, 60),
       financialSignals,
       fearGreed: financialData.fearGreed,
     });
